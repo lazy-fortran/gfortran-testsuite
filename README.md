@@ -51,10 +51,19 @@ Specify number of parallel workers:
 make test JOBS=32
 ```
 
-### Testing a Specific Compiler
+### Testing a GCC Build Tree
+
+When testing a locally built GCC (not installed), use the `GCC_BUILD` variable
+which automatically adds the required `-B` flag:
 
 ```bash
-make test FC=/path/to/custom/gfortran
+make test GCC_BUILD=/path/to/gcc-build JOBS=32
+```
+
+### Testing a Specific Installed Compiler
+
+```bash
+make test FC=/usr/bin/gfortran-14
 ```
 
 ### Quick Tests

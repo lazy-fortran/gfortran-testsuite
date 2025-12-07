@@ -5,6 +5,7 @@
 gcc-build/
 
 # Test results
+results/
 results-*/
 *.sum
 *.log
@@ -18,6 +19,11 @@ results-*/
 *.x
 *.exe
 a.out
+
+# Test artifacts
+*.006t.original
+*.s
+__pycache__/
 
 # Editor/IDE files
 *~

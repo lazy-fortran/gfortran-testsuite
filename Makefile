@@ -7,15 +7,33 @@
 #   make summary                  # Show test summary
 #   make clean                    # Clean artifacts
 #
+# For testing a GCC build tree (not installed):
+#   make test GCC_BUILD=/path/to/gcc-build
+#
 # This uses GCC's native parallelization via GCC_RUNTEST_PARALLELIZE_DIR.
 # Multiple runtest instances coordinate through a shared directory to
 # dynamically distribute tests.
 
 SHELL := /bin/bash
 
+# GCC build directory (set this when testing from a build tree)
+# Example: make test GCC_BUILD=/home/user/gcc-build
+GCC_BUILD ?=
+
 # Compiler to test (default: system gfortran)
-FC ?= gfortran
-GCC ?= gcc
+# When GCC_BUILD is set, auto-configure FC and GCC with -B flag
+# Note: FC defaults to f77 in make, so we override it explicitly
+ifdef GCC_BUILD
+  FC := $(GCC_BUILD)/gcc/gfortran -B$(GCC_BUILD)/gcc
+  GCC := $(GCC_BUILD)/gcc/gcc -B$(GCC_BUILD)/gcc
+else
+  ifeq ($(origin FC),default)
+    FC := gfortran
+  endif
+  ifeq ($(origin GCC),undefined)
+    GCC := gcc
+  endif
+endif
 
 # Number of parallel jobs (default: number of CPU cores)
 JOBS ?= $(shell nproc)
@@ -38,17 +56,23 @@ help:
 	@echo "Usage:"
 	@echo "  make test                  Run full test suite (parallel)"
 	@echo "  make test JOBS=32          Run with 32 parallel workers"
-	@echo "  make test FC=/path/to/gfortran  Test specific compiler"
 	@echo "  make test-quick            Run quick subset"
 	@echo "  make test-torture          Run torture tests"
 	@echo "  make test-gomp             Run OpenMP tests"
 	@echo "  make summary               Show test summary"
 	@echo "  make clean                 Clean artifacts"
 	@echo ""
-	@echo "Environment variables:"
-	@echo "  FC     Fortran compiler (default: gfortran)"
-	@echo "  GCC    C compiler for mixed tests (default: gcc)"
-	@echo "  JOBS   Number of parallel workers (default: nproc = $(JOBS))"
+	@echo "Testing a GCC build tree (not installed):"
+	@echo "  make test GCC_BUILD=/path/to/gcc-build"
+	@echo ""
+	@echo "Testing a specific installed compiler:"
+	@echo "  make test FC=/usr/bin/gfortran-14"
+	@echo ""
+	@echo "Variables:"
+	@echo "  GCC_BUILD  Path to GCC build tree (auto-sets FC/GCC with -B flag)"
+	@echo "  FC         Fortran compiler (default: gfortran)"
+	@echo "  GCC        C compiler for mixed tests (default: gcc)"
+	@echo "  JOBS       Number of parallel workers (default: nproc = $(JOBS))"
 
 # Main test target using GCC's native parallelization
 test:
