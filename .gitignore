@@ -22,8 +22,12 @@ a.out
 
 # Test artifacts
 *.006t.original
+*.271t.optimized
 *.s
+*.gcno
+*.sarif
 __pycache__/
+deps/
 
 # Editor/IDE files
 *~
