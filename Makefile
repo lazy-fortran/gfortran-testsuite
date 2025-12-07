@@ -23,16 +23,16 @@ GCC_BUILD ?=
 # Compiler to test (default: system gfortran)
 # When GCC_BUILD is set, auto-configure FC and GCC with -B flag
 # Note: FC defaults to f77 in make, so we override it explicitly
+# The -I flag is needed for ISO_Fortran_binding.h used by C-interop tests
+# (gfortran uses its driver to compile both .f90 and .c files)
 ifdef GCC_BUILD
-  FC := $(GCC_BUILD)/gcc/gfortran -B$(GCC_BUILD)/gcc
-  # Add -I flag for ISO_Fortran_binding.h (used by C-interop tests)
+  FC := $(GCC_BUILD)/gcc/gfortran -B$(GCC_BUILD)/gcc -I$(CURDIR)/testsuite/gfortran.dg
   GCC := $(GCC_BUILD)/gcc/gcc -B$(GCC_BUILD)/gcc -I$(CURDIR)/testsuite/gfortran.dg
 else
   ifeq ($(origin FC),default)
-    FC := gfortran
+    FC := gfortran -I$(CURDIR)/testsuite/gfortran.dg
   endif
   ifeq ($(origin GCC),undefined)
-    # Add -I flag for ISO_Fortran_binding.h when using system gcc
     GCC := gcc -I$(CURDIR)/testsuite/gfortran.dg
   endif
 endif
