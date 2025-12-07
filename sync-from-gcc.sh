@@ -44,7 +44,7 @@ get_gcc_commit_date() {
     git -C "${GCC_CLONE_DIR}" log -1 --format='%ci' HEAD
 }
 
-sync_directory() {
+sync_fortran_tests() {
     local src="$1"
     local dst="$2"
 
@@ -79,6 +79,8 @@ sync_directory() {
         --include='COPYING*' \
         --include='*.py' \
         --include='*.json' \
+        --include='*.c' \
+        --include='*.h' \
         --exclude='*' \
         "${src}/" "${dst}/"
 }
@@ -87,49 +89,28 @@ sync_lib_files() {
     local src="${GCC_CLONE_DIR}/gcc/testsuite/lib"
     local dst="${SCRIPT_DIR}/testsuite/lib"
 
-    log "Syncing DejaGnu library files..."
+    log "Syncing all DejaGnu library files..."
     mkdir -p "${dst}"
 
-    # Sync Fortran-related DejaGnu support files
-    local lib_files=(
-        "gfortran.exp"
-        "gfortran-dg.exp"
-        "fortran-modules.exp"
-        "fortran-torture.exp"
-        "gcc-defs.exp"
-        "gcc-dg.exp"
-        "prune.exp"
-        "timeout.exp"
-        "target-libpath.exp"
-        "target-supports.exp"
-        "target-supports-dg.exp"
-        "torture-options.exp"
-        "atomic-dg.exp"
-        "scanasm.exp"
-        "scandump.exp"
-        "scantree.exp"
-        "scanrtl.exp"
-        "scanipa.exp"
-        "scanoffload.exp"
-        "scanoffloadtree.exp"
-        "scanoffloadrtl.exp"
-        "scanoffloadipa.exp"
-        "target-utils.exp"
-        "wrapper.exp"
-        "copy-file.exp"
-        "dg-test-cleanup.exp"
-        "profopt.exp"
-        "asan-dg.exp"
-        "tsan-dg.exp"
-        "ubsan-dg.exp"
-        "hwasan-dg.exp"
-        "lto.exp"
-        "multiline.exp"
-        "options.exp"
-        "valgrind.exp"
-    )
+    # Copy all .exp, .py, .json files from testsuite/lib
+    rsync -av \
+        --include='*.exp' \
+        --include='*.py' \
+        --include='*.json' \
+        --exclude='*' \
+        "${src}/" "${dst}/"
+}
 
-    for f in "${lib_files[@]}"; do
+sync_gcc_dg_support() {
+    # Some gfortran tests reference files from gcc.dg (like builtins-config.h)
+    local src="${GCC_CLONE_DIR}/gcc/testsuite/gcc.dg"
+    local dst="${SCRIPT_DIR}/testsuite/gcc.dg"
+
+    log "Syncing gcc.dg support files..."
+    mkdir -p "${dst}"
+
+    # Copy header files needed by Fortran C-interop tests
+    for f in builtins-config.h; do
         if [[ -f "${src}/${f}" ]]; then
             cp -v "${src}/${f}" "${dst}/"
         fi
@@ -169,6 +150,26 @@ sync_libgomp_config() {
     fi
 }
 
+sync_contrib() {
+    local src="${GCC_CLONE_DIR}/contrib"
+    local dst="${SCRIPT_DIR}/contrib"
+
+    log "Syncing contrib scripts..."
+    mkdir -p "${dst}"
+
+    # Copy test_summary and related scripts
+    local scripts=(
+        "test_summary"
+    )
+
+    for f in "${scripts[@]}"; do
+        if [[ -f "${src}/${f}" ]]; then
+            cp -v "${src}/${f}" "${dst}/"
+            chmod +x "${dst}/${f}"
+        fi
+    done
+}
+
 count_files() {
     find "$1" -type f \( \
         -name '*.f' -o -name '*.f77' -o -name '*.for' -o \
@@ -206,7 +207,7 @@ create_commit() {
     cd "${SCRIPT_DIR}"
 
     # Stage all changes
-    git add -A testsuite/ libgomp/
+    git add -A testsuite/ libgomp/ contrib/
 
     # Check if there are changes to commit
     if git diff --cached --quiet; then
@@ -217,6 +218,10 @@ create_commit() {
     # Get list of changed files for commit message
     local changes
     changes=$(git diff --cached --stat | tail -1)
+
+    # Update .gcc-commit tracking file
+    echo "${gcc_commit}" > .gcc-commit
+    git add .gcc-commit
 
     # Create commit message
     local commit_msg
@@ -233,9 +238,11 @@ Synced directories:
 - gcc/testsuite/gfortran.fortran-torture/
 - gcc/testsuite/gfortran.target/
 - gcc/testsuite/gcc.target/powerpc/ppc-fortran/
-- gcc/testsuite/lib/ (Fortran-related)
+- gcc/testsuite/gcc.dg/ (support files)
+- gcc/testsuite/lib/
 - libgomp/testsuite/libgomp.fortran/
 - libgomp/testsuite/libgomp.oacc-fortran/
+- contrib/test_summary
 EOF
 )
 
@@ -256,37 +263,44 @@ main() {
     log "GCC date: ${gcc_date}"
 
     # Sync main gfortran test directories
-    sync_directory \
+    sync_fortran_tests \
         "${GCC_CLONE_DIR}/gcc/testsuite/gfortran.dg" \
         "${SCRIPT_DIR}/testsuite/gfortran.dg"
 
-    sync_directory \
+    sync_fortran_tests \
         "${GCC_CLONE_DIR}/gcc/testsuite/gfortran.fortran-torture" \
         "${SCRIPT_DIR}/testsuite/gfortran.fortran-torture"
 
-    sync_directory \
+    sync_fortran_tests \
         "${GCC_CLONE_DIR}/gcc/testsuite/gfortran.target" \
         "${SCRIPT_DIR}/testsuite/gfortran.target"
 
     # Sync PowerPC Fortran tests
-    sync_directory \
+    sync_fortran_tests \
         "${GCC_CLONE_DIR}/gcc/testsuite/gcc.target/powerpc/ppc-fortran" \
         "${SCRIPT_DIR}/testsuite/gcc.target/powerpc/ppc-fortran"
 
     # Sync libgomp Fortran tests
-    sync_directory \
+    sync_fortran_tests \
         "${GCC_CLONE_DIR}/libgomp/testsuite/libgomp.fortran" \
         "${SCRIPT_DIR}/libgomp/testsuite/libgomp.fortran"
 
-    sync_directory \
+    sync_fortran_tests \
         "${GCC_CLONE_DIR}/libgomp/testsuite/libgomp.oacc-fortran" \
         "${SCRIPT_DIR}/libgomp/testsuite/libgomp.oacc-fortran"
 
     # Sync DejaGnu infrastructure
     sync_lib_files
+    sync_gcc_dg_support
     sync_config_files
     sync_libgomp_lib
     sync_libgomp_config
+
+    # Sync contrib scripts
+    sync_contrib
+
+    # Update tracking file
+    echo "${gcc_commit}" > "${SCRIPT_DIR}/.gcc-commit"
 
     generate_stats
 

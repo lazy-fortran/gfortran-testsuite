@@ -12158,7 +12158,7 @@ proc check_effective_target_c++ { } {
  return 0
 }
 
-set cxx_default "c++20"
+set cxx_default "c++17"
 # Check whether the current active language standard supports the features
 # of C++11/C++14 by checking for the presence of one of the -std flags.
 # This assumes that the default for the compiler is $cxx_default, and that
@@ -14761,12 +14761,4 @@ proc check_effective_target_fentry { } {
 	    return 0
 	}
     }]
-}
-
-# Check if valgrind executable exists in PATH on host
-proc check_effective_target_valgrind { } {
-    if { [which valgrind] != 0 } {
-        return 1
-    }
-    return 0
 }
