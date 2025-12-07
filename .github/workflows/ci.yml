@@ -1,0 +1,164 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Run weekly on Sunday at 00:00 UTC
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+jobs:
+  test-system-gfortran:
+    name: Test with system gfortran
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gfortran dejagnu tcl expect
+
+      - name: Show gfortran version
+        run: gfortran --version
+
+      - name: Run quick tests
+        run: make test-quick FC=gfortran
+
+      - name: Show results
+        run: make summary
+        if: always()
+
+  build-and-test-gcc:
+    name: Build GCC and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            libgmp-dev \
+            libmpfr-dev \
+            libmpc-dev \
+            flex \
+            bison \
+            dejagnu \
+            tcl \
+            expect
+
+      - name: Read tracked GCC commit
+        id: gcc-commit
+        run: |
+          GCC_COMMIT=$(cat .gcc-commit)
+          echo "commit=$GCC_COMMIT" >> $GITHUB_OUTPUT
+          echo "short_commit=${GCC_COMMIT:0:12}" >> $GITHUB_OUTPUT
+          echo "Will build GCC commit: $GCC_COMMIT"
+
+      - name: Cache GCC build
+        uses: actions/cache@v4
+        with:
+          path: gcc-build
+          key: gcc-build-${{ steps.gcc-commit.outputs.commit }}
+
+      - name: Clone GCC at tracked commit
+        run: |
+          # Shallow clone at specific commit
+          git init .gcc-upstream
+          cd .gcc-upstream
+          git remote add origin git://gcc.gnu.org/git/gcc.git
+          git fetch --depth 1 origin ${{ steps.gcc-commit.outputs.commit }}
+          git checkout FETCH_HEAD
+          echo "Checked out GCC commit: $(git rev-parse HEAD)"
+
+      - name: Configure GCC
+        run: |
+          if [ ! -f gcc-build/Makefile ]; then
+            mkdir -p gcc-build
+            cd gcc-build
+            ../.gcc-upstream/configure \
+              --enable-languages=fortran \
+              --disable-multilib \
+              --disable-bootstrap \
+              --disable-libsanitizer \
+              --disable-libvtv \
+              --disable-libgomp \
+              CFLAGS='-O2 -g0' \
+              CXXFLAGS='-O2 -g0'
+          fi
+
+      - name: Build GCC
+        run: |
+          cd gcc-build
+          make -j$(nproc)
+
+      - name: Show built gfortran version
+        run: |
+          ./gcc-build/gcc/gfortran -v
+          echo ""
+          echo "GCC commit: ${{ steps.gcc-commit.outputs.commit }}"
+
+      - name: Create results directories
+        run: |
+          mkdir -p results-a results-b results-c results-d results-e results-f results-g
+
+      - name: Run test shards in parallel
+        run: |
+          make -j7 test \
+            FC="$(pwd)/gcc-build/gcc/gfortran" \
+            GCC="$(pwd)/gcc-build/gcc/gcc"
+        continue-on-error: true
+
+      - name: Show test summary
+        run: make summary
+        if: always()
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-gcc-${{ steps.gcc-commit.outputs.short_commit }}
+          path: |
+            results-*/gfortran.sum
+            results-*/gfortran.log
+
+      - name: Check for failures
+        run: |
+          total_fail=0
+          for sum in results-*/gfortran.sum; do
+            if [ -f "$sum" ]; then
+              fail=$(grep -c "^FAIL:" "$sum" 2>/dev/null || echo 0)
+              total_fail=$((total_fail + fail))
+            fi
+          done
+          echo "Total failures: $total_fail"
+          # The test suite should pass with matching GCC commit
+          if [ $total_fail -gt 0 ]; then
+            echo "::warning::$total_fail test failures detected"
+          fi
+
+  sync-check:
+    name: Validate sync script
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate sync script syntax
+        run: bash -n sync-from-gcc.sh
+
+      - name: Check script is executable
+        run: test -x sync-from-gcc.sh
+
+      - name: Verify .gcc-commit file exists
+        run: |
+          if [ ! -f .gcc-commit ]; then
+            echo "::error::.gcc-commit file is missing"
+            exit 1
+          fi
+          echo "Tracked GCC commit: $(cat .gcc-commit)"

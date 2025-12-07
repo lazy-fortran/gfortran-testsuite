@@ -1,6 +1,14 @@
 # GCC upstream clone (created by sync script)
 .gcc-upstream/
 
+# GCC build directory (for CI)
+gcc-build/
+
+# Test results
+results-*/
+*.sum
+*.log
+
 # Build artifacts
 *.o
 *.mod
@@ -8,6 +16,8 @@
 *.a
 *.so
 *.x
+*.exe
+a.out
 
 # Editor/IDE files
 *~

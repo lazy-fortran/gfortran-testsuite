@@ -1,5 +1,7 @@
 # GFortran Test Suite
 
+[![CI](https://github.com/lazy-fortran/gfortran-testsuite/actions/workflows/ci.yml/badge.svg)](https://github.com/lazy-fortran/gfortran-testsuite/actions/workflows/ci.yml)
+
 A standalone extraction of the GNU Fortran (gfortran) test suite from GCC,
 enabling testing of any gfortran-compatible compiler without building GCC.
 
@@ -14,12 +16,14 @@ This repository contains:
 - **libgomp/testsuite/libgomp.fortran/** - OpenMP Fortran tests
 - **libgomp/testsuite/libgomp.oacc-fortran/** - OpenACC Fortran tests
 - **testsuite/lib/** - DejaGnu support libraries
+- **contrib/test_summary** - GCC test summary script
 
 ## Requirements
 
 - DejaGnu (runtest command)
 - A gfortran-compatible compiler
 - Tcl/Expect (for DejaGnu)
+- GNU Make
 
 On Arch Linux:
 ```bash
@@ -33,45 +37,56 @@ sudo apt install dejagnu tcl expect
 
 ## Running Tests
 
-### Quick Start
+### Parallel Test Execution
 
-To test an installed gfortran:
+Run the full test suite using all CPU cores:
 
 ```bash
-cd testsuite
-runtest --tool gfortran
+make -j$(nproc) test
 ```
 
 ### Testing a Specific Compiler
 
-Set the `GFORTRAN_UNDER_TEST` environment variable:
-
 ```bash
-export GFORTRAN_UNDER_TEST=/path/to/custom/gfortran
-cd testsuite
-runtest --tool gfortran
+make -j$(nproc) test FC=/path/to/custom/gfortran
 ```
 
-### Running Specific Tests
+### Quick Tests
 
-Run a single test:
-```bash
-runtest --tool gfortran gfortran.dg/array_1.f90
-```
-
-Run tests matching a pattern:
-```bash
-runtest --tool gfortran gfortran.dg/allocate*.f90
-```
-
-### Running OpenMP Tests
-
-For OpenMP tests, you need libgomp available:
+Run a small subset of tests for quick verification:
 
 ```bash
-cd libgomp/testsuite
-runtest --tool libgomp libgomp.fortran/fortran.exp
+make test-quick
 ```
+
+### Other Test Targets
+
+```bash
+make test-torture   # Run torture tests
+make test-gomp      # Run OpenMP tests
+make summary        # Show test results summary
+make clean          # Clean test artifacts
+```
+
+### Test Shards
+
+Tests are split into alphabetical shards (a-d, e-h, i-l, m-p, q-t, u-z, A-Z0-9)
+that run in parallel with `make -j`. You can also run individual shards:
+
+```bash
+make test-shard-a   # Run tests starting with a-d
+make test-shard-b   # Run tests starting with e-h
+# etc.
+```
+
+## CI/CD
+
+This repository includes GitHub Actions CI that:
+
+1. **Tests with system gfortran** - Quick validation on every push
+2. **Builds GCC master and tests** - Weekly builds GCC from source and runs the full test suite
+
+See [.github/workflows/ci.yml](.github/workflows/ci.yml) for details.
 
 ## Syncing with GCC Upstream
 
@@ -91,7 +106,8 @@ GCC_BRANCH=releases/gcc-14 ./sync-from-gcc.sh
 The script:
 1. Clones or updates a shallow GCC clone in `.gcc-upstream/`
 2. Syncs all Fortran test files preserving directory structure
-3. Optionally creates a commit with the GCC commit reference
+3. Syncs DejaGnu infrastructure and contrib scripts
+4. Optionally creates a commit with the GCC commit reference
 
 ## Test File Extensions
 
