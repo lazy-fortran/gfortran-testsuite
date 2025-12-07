@@ -25,13 +25,15 @@ GCC_BUILD ?=
 # Note: FC defaults to f77 in make, so we override it explicitly
 ifdef GCC_BUILD
   FC := $(GCC_BUILD)/gcc/gfortran -B$(GCC_BUILD)/gcc
-  GCC := $(GCC_BUILD)/gcc/gcc -B$(GCC_BUILD)/gcc
+  # Add -I flag for ISO_Fortran_binding.h (used by C-interop tests)
+  GCC := $(GCC_BUILD)/gcc/gcc -B$(GCC_BUILD)/gcc -I$(CURDIR)/testsuite/gfortran.dg
 else
   ifeq ($(origin FC),default)
     FC := gfortran
   endif
   ifeq ($(origin GCC),undefined)
-    GCC := gcc
+    # Add -I flag for ISO_Fortran_binding.h when using system gcc
+    GCC := gcc -I$(CURDIR)/testsuite/gfortran.dg
   endif
 endif
 

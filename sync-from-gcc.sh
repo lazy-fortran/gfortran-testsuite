@@ -128,6 +128,17 @@ sync_config_files() {
     fi
 }
 
+sync_libgfortran_headers() {
+    # Copy ISO_Fortran_binding.h for C-interop tests
+    local src="${GCC_CLONE_DIR}/libgfortran"
+    local dst="${SCRIPT_DIR}/testsuite/gfortran.dg"
+
+    log "Syncing libgfortran headers for C-interop tests..."
+    if [[ -f "${src}/ISO_Fortran_binding.h" ]]; then
+        cp -v "${src}/ISO_Fortran_binding.h" "${dst}/"
+    fi
+}
+
 sync_libgomp_lib() {
     local src="${GCC_CLONE_DIR}/libgomp/testsuite/lib"
     local dst="${SCRIPT_DIR}/libgomp/testsuite/lib"
@@ -297,6 +308,7 @@ main() {
     sync_config_files
     sync_libgomp_lib
     sync_libgomp_config
+    sync_libgfortran_headers
 
     # Sync contrib scripts
     sync_contrib
