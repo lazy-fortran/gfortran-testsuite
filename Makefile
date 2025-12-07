@@ -163,11 +163,11 @@ summary:
 	@total_pass=0; total_fail=0; total_xpass=0; total_xfail=0; total_unsup=0; \
 	for sum in $(RESULTS_DIR)/gfortran.sum $(RESULTS_DIR)-*/gfortran.sum $(RESULTS_DIR)-*/libgomp.sum; do \
 		if [ -f "$$sum" ]; then \
-			pass=$$(grep -c "^PASS:" "$$sum" 2>/dev/null || echo 0); \
-			fail=$$(grep -c "^FAIL:" "$$sum" 2>/dev/null || echo 0); \
-			xpass=$$(grep -c "^XPASS:" "$$sum" 2>/dev/null || echo 0); \
-			xfail=$$(grep -c "^XFAIL:" "$$sum" 2>/dev/null || echo 0); \
-			unsup=$$(grep -c "^UNSUPPORTED:" "$$sum" 2>/dev/null || echo 0); \
+			pass=$$(grep -c "^PASS:" "$$sum" 2>/dev/null) || pass=0; \
+			fail=$$(grep -c "^FAIL:" "$$sum" 2>/dev/null) || fail=0; \
+			xpass=$$(grep -c "^XPASS:" "$$sum" 2>/dev/null) || xpass=0; \
+			xfail=$$(grep -c "^XFAIL:" "$$sum" 2>/dev/null) || xfail=0; \
+			unsup=$$(grep -c "^UNSUPPORTED:" "$$sum" 2>/dev/null) || unsup=0; \
 			total_pass=$$((total_pass + pass)); \
 			total_fail=$$((total_fail + fail)); \
 			total_xpass=$$((total_xpass + xpass)); \
@@ -180,7 +180,7 @@ summary:
 	echo "XPASS:       $$total_xpass"; \
 	echo "XFAIL:       $$total_xfail"; \
 	echo "UNSUPPORTED: $$total_unsup"; \
-	if [ $$total_fail -gt 0 ]; then \
+	if [ "$$total_fail" -gt 0 ]; then \
 		echo ""; \
 		echo "Failures:"; \
 		grep "^FAIL:" $(RESULTS_DIR)/gfortran.sum $(RESULTS_DIR)-*/gfortran.sum 2>/dev/null | head -20; \
