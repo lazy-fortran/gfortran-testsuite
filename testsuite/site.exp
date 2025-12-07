@@ -1,0 +1,59 @@
+# site.exp - DejaGnu site configuration for standalone gfortran testsuite
+#
+# This file configures DejaGnu to run gfortran tests without a full GCC build.
+
+# Basic configuration
+set srcdir [file dirname [info script]]
+set tool gfortran
+set objdir [pwd]
+
+# Find the compiler
+if ![info exists GFORTRAN_UNDER_TEST] {
+    if [info exists env(GFORTRAN_UNDER_TEST)] {
+        set GFORTRAN_UNDER_TEST $env(GFORTRAN_UNDER_TEST)
+    } else {
+        set GFORTRAN_UNDER_TEST "gfortran"
+    }
+}
+
+# Compiler for C tests in mixed-language tests
+if ![info exists GCC_UNDER_TEST] {
+    if [info exists env(GCC_UNDER_TEST)] {
+        set GCC_UNDER_TEST $env(GCC_UNDER_TEST)
+    } else {
+        set GCC_UNDER_TEST "gcc"
+    }
+}
+
+# Torture test options
+set DG_TORTURE_OPTIONS [list \
+    { -O0 } \
+    { -O1 } \
+    { -O2 } \
+    { -O3 } \
+    { -Os } \
+    { -O2 -flto } \
+]
+
+# Default flags
+if ![info exists DEFAULT_FFLAGS] {
+    set DEFAULT_FFLAGS "-pedantic-errors"
+}
+
+# Indicate we are not testing in a build tree
+# (disables some library path magic)
+set TESTING_IN_BUILD_TREE 0
+
+# Additional test flags
+if ![info exists TEST_ALWAYS_FLAGS] {
+    set TEST_ALWAYS_FLAGS ""
+}
+
+# Board info (local execution)
+set target_list [list "unix"]
+set target_alias "unix"
+
+# Verbosity
+if ![info exists verbose] {
+    set verbose 0
+}

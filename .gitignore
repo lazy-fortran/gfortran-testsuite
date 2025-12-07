@@ -1,0 +1,20 @@
+# GCC upstream clone (created by sync script)
+.gcc-upstream/
+
+# Build artifacts
+*.o
+*.mod
+*.smod
+*.a
+*.so
+*.x
+
+# Editor/IDE files
+*~
+*.swp
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db

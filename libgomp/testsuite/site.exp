@@ -1,0 +1,63 @@
+# site.exp - DejaGnu site configuration for libgomp Fortran tests
+#
+# This file configures DejaGnu to run OpenMP/OpenACC Fortran tests.
+
+# Basic configuration
+set srcdir [file dirname [info script]]
+set tool libgomp
+set objdir [pwd]
+
+# Find the compiler
+if ![info exists GFORTRAN_UNDER_TEST] {
+    if [info exists env(GFORTRAN_UNDER_TEST)] {
+        set GFORTRAN_UNDER_TEST $env(GFORTRAN_UNDER_TEST)
+    } else {
+        set GFORTRAN_UNDER_TEST "gfortran"
+    }
+}
+
+if ![info exists GCC_UNDER_TEST] {
+    if [info exists env(GCC_UNDER_TEST)] {
+        set GCC_UNDER_TEST $env(GCC_UNDER_TEST)
+    } else {
+        set GCC_UNDER_TEST "gcc"
+    }
+}
+
+# Torture test options
+set DG_TORTURE_OPTIONS [list \
+    { -O0 } \
+    { -O1 } \
+    { -O2 } \
+    { -O3 } \
+    { -Os } \
+]
+
+# Default flags (includes OpenMP by default)
+if ![info exists DEFAULT_FFLAGS] {
+    set DEFAULT_FFLAGS "-fopenmp"
+}
+
+# Indicate we are not testing in a build tree
+set TESTING_IN_BUILD_TREE 0
+set blddir ""
+
+# Board info (local execution)
+set target_list [list "unix"]
+set target_alias "unix"
+
+# LD library path for libgomp
+if [info exists env(LD_LIBRARY_PATH)] {
+    set ld_library_path $env(LD_LIBRARY_PATH)
+} else {
+    set ld_library_path ""
+}
+set always_ld_library_path $ld_library_path
+
+# Offload targets (disabled by default for standalone use)
+set offload_targets ""
+
+# Verbosity
+if ![info exists verbose] {
+    set verbose 0
+}
