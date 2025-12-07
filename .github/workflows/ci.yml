@@ -5,9 +5,6 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-  schedule:
-    # Run weekly on Sunday at 00:00 UTC
-    - cron: '0 0 * * 0'
   workflow_dispatch:
 
 jobs:
@@ -104,15 +101,12 @@ jobs:
           echo ""
           echo "GCC commit: ${{ steps.gcc-commit.outputs.commit }}"
 
-      - name: Create results directories
+      - name: Run tests with GCC's native parallelization
         run: |
-          mkdir -p results-a results-b results-c results-d results-e results-f results-g
-
-      - name: Run test shards in parallel
-        run: |
-          make -j7 test \
+          make test \
             FC="$(pwd)/gcc-build/gcc/gfortran" \
-            GCC="$(pwd)/gcc-build/gcc/gcc"
+            GCC="$(pwd)/gcc-build/gcc/gcc" \
+            JOBS=$(nproc)
         continue-on-error: true
 
       - name: Show test summary
@@ -125,22 +119,17 @@ jobs:
         with:
           name: test-results-gcc-${{ steps.gcc-commit.outputs.short_commit }}
           path: |
-            results-*/gfortran.sum
-            results-*/gfortran.log
+            results/gfortran.sum
+            results/gfortran.log
 
       - name: Check for failures
         run: |
-          total_fail=0
-          for sum in results-*/gfortran.sum; do
-            if [ -f "$sum" ]; then
-              fail=$(grep -c "^FAIL:" "$sum" 2>/dev/null || echo 0)
-              total_fail=$((total_fail + fail))
+          if [ -f results/gfortran.sum ]; then
+            total_fail=$(grep -c "^FAIL:" results/gfortran.sum 2>/dev/null || echo 0)
+            echo "Total failures: $total_fail"
+            if [ $total_fail -gt 0 ]; then
+              echo "::warning::$total_fail test failures detected"
             fi
-          done
-          echo "Total failures: $total_fail"
-          # The test suite should pass with matching GCC commit
-          if [ $total_fail -gt 0 ]; then
-            echo "::warning::$total_fail test failures detected"
           fi
 
   sync-check:

@@ -16,7 +16,7 @@ This repository contains:
 - **libgomp/testsuite/libgomp.fortran/** - OpenMP Fortran tests
 - **libgomp/testsuite/libgomp.oacc-fortran/** - OpenACC Fortran tests
 - **testsuite/lib/** - DejaGnu support libraries
-- **contrib/test_summary** - GCC test summary script
+- **contrib/** - GCC test utilities (test_summary, dg-extract-results)
 
 ## Requirements
 
@@ -39,16 +39,22 @@ sudo apt install dejagnu tcl expect
 
 ### Parallel Test Execution
 
-Run the full test suite using all CPU cores:
+Run the full test suite using all CPU cores (uses GCC's native parallelization):
 
 ```bash
-make -j$(nproc) test
+make test
+```
+
+Specify number of parallel workers:
+
+```bash
+make test JOBS=32
 ```
 
 ### Testing a Specific Compiler
 
 ```bash
-make -j$(nproc) test FC=/path/to/custom/gfortran
+make test FC=/path/to/custom/gfortran
 ```
 
 ### Quick Tests
@@ -64,27 +70,27 @@ make test-quick
 ```bash
 make test-torture   # Run torture tests
 make test-gomp      # Run OpenMP tests
+make test-all       # Run all test suites
 make summary        # Show test results summary
 make clean          # Clean test artifacts
 ```
 
-### Test Shards
+## Parallelization
 
-Tests are split into alphabetical shards (a-d, e-h, i-l, m-p, q-t, u-z, A-Z0-9)
-that run in parallel with `make -j`. You can also run individual shards:
+This test suite uses GCC's native `GCC_RUNTEST_PARALLELIZE_DIR` mechanism for
+parallel test execution. Multiple runtest instances coordinate through a shared
+directory to dynamically distribute tests, ensuring optimal load balancing
+regardless of the number of workers.
 
-```bash
-make test-shard-a   # Run tests starting with a-d
-make test-shard-b   # Run tests starting with e-h
-# etc.
-```
+Results from parallel workers are merged using GCC's `dg-extract-results.sh`
+script.
 
 ## CI/CD
 
 This repository includes GitHub Actions CI that:
 
 1. **Tests with system gfortran** - Quick validation on every push
-2. **Builds GCC master and tests** - Weekly builds GCC from source and runs the full test suite
+2. **Builds GCC and tests** - Weekly builds GCC from tracked commit and runs the full test suite
 
 See [.github/workflows/ci.yml](.github/workflows/ci.yml) for details.
 
@@ -107,7 +113,8 @@ The script:
 1. Clones or updates a shallow GCC clone in `.gcc-upstream/`
 2. Syncs all Fortran test files preserving directory structure
 3. Syncs DejaGnu infrastructure and contrib scripts
-4. Optionally creates a commit with the GCC commit reference
+4. Updates `.gcc-commit` tracking file
+5. Optionally creates a commit with the GCC commit reference
 
 ## Test File Extensions
 

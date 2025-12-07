@@ -1,12 +1,15 @@
 # Makefile for gfortran test suite
 #
 # Usage:
-#   make -j$(nproc) test           # Run full test suite in parallel
-#   make -j$(nproc) test-quick     # Run quick subset
-#   make summary                   # Show test summary
-#   make clean                     # Clean artifacts
+#   make test                     # Run full test suite (auto-parallel)
+#   make test JOBS=32             # Run with 32 parallel workers
+#   make test-quick               # Run quick subset
+#   make summary                  # Show test summary
+#   make clean                    # Clean artifacts
 #
-# Parallel execution works by splitting tests into shards that run concurrently.
+# This uses GCC's native parallelization via GCC_RUNTEST_PARALLELIZE_DIR.
+# Multiple runtest instances coordinate through a shared directory to
+# dynamically distribute tests.
 
 SHELL := /bin/bash
 
@@ -14,27 +17,18 @@ SHELL := /bin/bash
 FC ?= gfortran
 GCC ?= gcc
 
+# Number of parallel jobs (default: number of CPU cores)
+JOBS ?= $(shell nproc)
+
 # Test directories
 TESTSUITE_DIR := testsuite
 LIBGOMP_DIR := libgomp/testsuite
 
-# Get list of test files for sharding
-DG_TESTS := $(wildcard $(TESTSUITE_DIR)/gfortran.dg/*.f90 $(TESTSUITE_DIR)/gfortran.dg/*.f)
-DG_TESTS += $(wildcard $(TESTSUITE_DIR)/gfortran.dg/*.f03 $(TESTSUITE_DIR)/gfortran.dg/*.f08)
-DG_TESTS += $(wildcard $(TESTSUITE_DIR)/gfortran.dg/*.f95 $(TESTSUITE_DIR)/gfortran.dg/*.F90)
+# Results directory
+RESULTS_DIR := results
 
-# Create shard targets (split alphabetically into groups)
-SHARD_A := $(filter $(TESTSUITE_DIR)/gfortran.dg/[a-d]%, $(DG_TESTS))
-SHARD_B := $(filter $(TESTSUITE_DIR)/gfortran.dg/[e-h]%, $(DG_TESTS))
-SHARD_C := $(filter $(TESTSUITE_DIR)/gfortran.dg/[i-l]%, $(DG_TESTS))
-SHARD_D := $(filter $(TESTSUITE_DIR)/gfortran.dg/[m-p]%, $(DG_TESTS))
-SHARD_E := $(filter $(TESTSUITE_DIR)/gfortran.dg/[q-t]%, $(DG_TESTS))
-SHARD_F := $(filter $(TESTSUITE_DIR)/gfortran.dg/[u-z]%, $(DG_TESTS))
-SHARD_G := $(filter $(TESTSUITE_DIR)/gfortran.dg/[A-Z0-9]%, $(DG_TESTS))
-
-.PHONY: all test test-shard-a test-shard-b test-shard-c test-shard-d \
-        test-shard-e test-shard-f test-shard-g \
-        test-quick test-torture test-gomp test-all summary clean help
+.PHONY: all test test-quick test-torture test-gomp test-all \
+        summary clean help
 
 all: help
 
@@ -42,96 +36,97 @@ help:
 	@echo "GFortran Test Suite"
 	@echo ""
 	@echo "Usage:"
-	@echo "  make -j\$$(nproc) test        Run full test suite (parallel shards)"
+	@echo "  make test                  Run full test suite (parallel)"
+	@echo "  make test JOBS=32          Run with 32 parallel workers"
 	@echo "  make test FC=/path/to/gfortran  Test specific compiler"
-	@echo "  make -j\$$(nproc) test-quick  Run quick subset"
-	@echo "  make test-torture            Run torture tests"
-	@echo "  make test-gomp               Run OpenMP tests"
-	@echo "  make summary                 Show test summary"
-	@echo "  make clean                   Clean artifacts"
+	@echo "  make test-quick            Run quick subset"
+	@echo "  make test-torture          Run torture tests"
+	@echo "  make test-gomp             Run OpenMP tests"
+	@echo "  make summary               Show test summary"
+	@echo "  make clean                 Clean artifacts"
 	@echo ""
 	@echo "Environment variables:"
 	@echo "  FC     Fortran compiler (default: gfortran)"
 	@echo "  GCC    C compiler for mixed tests (default: gcc)"
+	@echo "  JOBS   Number of parallel workers (default: nproc = $(JOBS))"
 
-# Main test target - runs all shards (use make -j for parallelism)
-test: test-shard-a test-shard-b test-shard-c test-shard-d test-shard-e test-shard-f test-shard-g
-	@echo "All test shards completed."
+# Main test target using GCC's native parallelization
+test:
+	@echo "=== Running gfortran.dg tests with $(FC) using $(JOBS) parallel workers ==="
+	@rm -rf $(RESULTS_DIR)
+	@mkdir -p $(RESULTS_DIR)/parallel
+	@# Launch JOBS parallel runtest instances
+	@# They coordinate via GCC_RUNTEST_PARALLELIZE_DIR
+	@for i in $$(seq 1 $(JOBS)); do \
+		( \
+			mkdir -p $(RESULTS_DIR)/worker-$$i && \
+			cd $(TESTSUITE_DIR) && \
+			GCC_RUNTEST_PARALLELIZE_DIR="$(CURDIR)/$(RESULTS_DIR)/parallel" \
+			GFORTRAN_UNDER_TEST="$(FC)" \
+			GCC_UNDER_TEST="$(GCC)" \
+			runtest --tool gfortran gfortran.dg/dg.exp \
+				--outdir $(CURDIR)/$(RESULTS_DIR)/worker-$$i \
+				2>&1 | tee $(CURDIR)/$(RESULTS_DIR)/worker-$$i/test.log \
+		) & \
+	done; \
+	wait
+	@echo "=== Merging results ==="
+	@./contrib/dg-extract-results.sh \
+		$$(find $(RESULTS_DIR) -name 'gfortran.sum' | sort) \
+		> $(RESULTS_DIR)/gfortran.sum
+	@./contrib/dg-extract-results.sh -L \
+		$$(find $(RESULTS_DIR) -name 'gfortran.log' | sort) \
+		> $(RESULTS_DIR)/gfortran.log
+	@echo "=== Test run complete ==="
 	@$(MAKE) --no-print-directory summary
-
-# Individual shard targets
-test-shard-a:
-	@echo "=== Running shard A (a-d) with $(FC) ==="
-	@cd $(TESTSUITE_DIR) && \
-	GFORTRAN_UNDER_TEST="$(FC)" GCC_UNDER_TEST="$(GCC)" \
-	runtest --tool gfortran gfortran.dg/dg.exp='[a-d]*' \
-		--outdir $(CURDIR)/results-a 2>&1 | tee $(CURDIR)/results-a/test.log || true
-
-test-shard-b:
-	@echo "=== Running shard B (e-h) with $(FC) ==="
-	@cd $(TESTSUITE_DIR) && \
-	GFORTRAN_UNDER_TEST="$(FC)" GCC_UNDER_TEST="$(GCC)" \
-	runtest --tool gfortran gfortran.dg/dg.exp='[e-h]*' \
-		--outdir $(CURDIR)/results-b 2>&1 | tee $(CURDIR)/results-b/test.log || true
-
-test-shard-c:
-	@echo "=== Running shard C (i-l) with $(FC) ==="
-	@cd $(TESTSUITE_DIR) && \
-	GFORTRAN_UNDER_TEST="$(FC)" GCC_UNDER_TEST="$(GCC)" \
-	runtest --tool gfortran gfortran.dg/dg.exp='[i-l]*' \
-		--outdir $(CURDIR)/results-c 2>&1 | tee $(CURDIR)/results-c/test.log || true
-
-test-shard-d:
-	@echo "=== Running shard D (m-p) with $(FC) ==="
-	@cd $(TESTSUITE_DIR) && \
-	GFORTRAN_UNDER_TEST="$(FC)" GCC_UNDER_TEST="$(GCC)" \
-	runtest --tool gfortran gfortran.dg/dg.exp='[m-p]*' \
-		--outdir $(CURDIR)/results-d 2>&1 | tee $(CURDIR)/results-d/test.log || true
-
-test-shard-e:
-	@echo "=== Running shard E (q-t) with $(FC) ==="
-	@cd $(TESTSUITE_DIR) && \
-	GFORTRAN_UNDER_TEST="$(FC)" GCC_UNDER_TEST="$(GCC)" \
-	runtest --tool gfortran gfortran.dg/dg.exp='[q-t]*' \
-		--outdir $(CURDIR)/results-e 2>&1 | tee $(CURDIR)/results-e/test.log || true
-
-test-shard-f:
-	@echo "=== Running shard F (u-z) with $(FC) ==="
-	@cd $(TESTSUITE_DIR) && \
-	GFORTRAN_UNDER_TEST="$(FC)" GCC_UNDER_TEST="$(GCC)" \
-	runtest --tool gfortran gfortran.dg/dg.exp='[u-z]*' \
-		--outdir $(CURDIR)/results-f 2>&1 | tee $(CURDIR)/results-f/test.log || true
-
-test-shard-g:
-	@echo "=== Running shard G (A-Z, 0-9) with $(FC) ==="
-	@cd $(TESTSUITE_DIR) && \
-	GFORTRAN_UNDER_TEST="$(FC)" GCC_UNDER_TEST="$(GCC)" \
-	runtest --tool gfortran gfortran.dg/dg.exp='[A-Z0-9]*' \
-		--outdir $(CURDIR)/results-g 2>&1 | tee $(CURDIR)/results-g/test.log || true
 
 test-quick:
 	@echo "Running quick test subset with $(FC)..."
-	@mkdir -p results-quick
+	@mkdir -p $(RESULTS_DIR)
 	@cd $(TESTSUITE_DIR) && \
 	GFORTRAN_UNDER_TEST="$(FC)" GCC_UNDER_TEST="$(GCC)" \
 	runtest --tool gfortran gfortran.dg/dg.exp='array_[0-9]*' \
-		--outdir $(CURDIR)/results-quick 2>&1 | tee $(CURDIR)/results-quick/test.log
+		--outdir $(CURDIR)/$(RESULTS_DIR) 2>&1 | tee $(CURDIR)/$(RESULTS_DIR)/test.log
 
 test-torture:
-	@echo "Running torture tests with $(FC)..."
-	@mkdir -p results-torture
-	@cd $(TESTSUITE_DIR) && \
-	GFORTRAN_UNDER_TEST="$(FC)" GCC_UNDER_TEST="$(GCC)" \
-	runtest --tool gfortran gfortran.fortran-torture/torture.exp \
-		--outdir $(CURDIR)/results-torture 2>&1 | tee $(CURDIR)/results-torture/test.log
+	@echo "Running torture tests with $(FC) using $(JOBS) parallel workers..."
+	@mkdir -p $(RESULTS_DIR)-torture/parallel
+	@for i in $$(seq 1 $(JOBS)); do \
+		( \
+			mkdir -p $(RESULTS_DIR)-torture/worker-$$i && \
+			cd $(TESTSUITE_DIR) && \
+			GCC_RUNTEST_PARALLELIZE_DIR="$(CURDIR)/$(RESULTS_DIR)-torture/parallel" \
+			GFORTRAN_UNDER_TEST="$(FC)" \
+			GCC_UNDER_TEST="$(GCC)" \
+			runtest --tool gfortran gfortran.fortran-torture/torture.exp \
+				--outdir $(CURDIR)/$(RESULTS_DIR)-torture/worker-$$i \
+				2>&1 | tee $(CURDIR)/$(RESULTS_DIR)-torture/worker-$$i/test.log \
+		) & \
+	done; \
+	wait
+	@./contrib/dg-extract-results.sh \
+		$$(find $(RESULTS_DIR)-torture -name 'gfortran.sum' | sort) \
+		> $(RESULTS_DIR)-torture/gfortran.sum 2>/dev/null || true
 
 test-gomp:
-	@echo "Running OpenMP Fortran tests with $(FC)..."
-	@mkdir -p results-gomp
-	@cd $(LIBGOMP_DIR) && \
-	GFORTRAN_UNDER_TEST="$(FC)" GCC_UNDER_TEST="$(GCC)" \
-	runtest --tool libgomp libgomp.fortran/fortran.exp \
-		--outdir $(CURDIR)/results-gomp 2>&1 | tee $(CURDIR)/results-gomp/test.log
+	@echo "Running OpenMP Fortran tests with $(FC) using $(JOBS) parallel workers..."
+	@mkdir -p $(RESULTS_DIR)-gomp/parallel
+	@for i in $$(seq 1 $(JOBS)); do \
+		( \
+			mkdir -p $(RESULTS_DIR)-gomp/worker-$$i && \
+			cd $(LIBGOMP_DIR) && \
+			GCC_RUNTEST_PARALLELIZE_DIR="$(CURDIR)/$(RESULTS_DIR)-gomp/parallel" \
+			GFORTRAN_UNDER_TEST="$(FC)" \
+			GCC_UNDER_TEST="$(GCC)" \
+			runtest --tool libgomp libgomp.fortran/fortran.exp \
+				--outdir $(CURDIR)/$(RESULTS_DIR)-gomp/worker-$$i \
+				2>&1 | tee $(CURDIR)/$(RESULTS_DIR)-gomp/worker-$$i/test.log \
+		) & \
+	done; \
+	wait
+	@./contrib/dg-extract-results.sh \
+		$$(find $(RESULTS_DIR)-gomp -name '*.sum' | sort) \
+		> $(RESULTS_DIR)-gomp/libgomp.sum 2>/dev/null || true
 
 test-all: test test-torture test-gomp
 	@echo "All test suites completed."
@@ -140,7 +135,7 @@ summary:
 	@echo ""
 	@echo "=== Test Summary ==="
 	@total_pass=0; total_fail=0; total_xpass=0; total_xfail=0; total_unsup=0; \
-	for sum in results-*/gfortran.sum $(TESTSUITE_DIR)/gfortran.sum; do \
+	for sum in $(RESULTS_DIR)/gfortran.sum $(RESULTS_DIR)-*/gfortran.sum $(RESULTS_DIR)-*/libgomp.sum; do \
 		if [ -f "$$sum" ]; then \
 			pass=$$(grep -c "^PASS:" "$$sum" 2>/dev/null || echo 0); \
 			fail=$$(grep -c "^FAIL:" "$$sum" 2>/dev/null || echo 0); \
@@ -162,11 +157,11 @@ summary:
 	if [ $$total_fail -gt 0 ]; then \
 		echo ""; \
 		echo "Failures:"; \
-		grep "^FAIL:" results-*/gfortran.sum $(TESTSUITE_DIR)/gfortran.sum 2>/dev/null | head -20; \
+		grep "^FAIL:" $(RESULTS_DIR)/gfortran.sum $(RESULTS_DIR)-*/gfortran.sum 2>/dev/null | head -20; \
 	fi
 
 clean:
-	rm -rf results-*
+	rm -rf $(RESULTS_DIR) $(RESULTS_DIR)-*
 	rm -f $(TESTSUITE_DIR)/*.sum $(TESTSUITE_DIR)/*.log
 	rm -f $(TESTSUITE_DIR)/gfortran.sum $(TESTSUITE_DIR)/gfortran.log
 	rm -f $(LIBGOMP_DIR)/*.sum $(LIBGOMP_DIR)/*.log

@@ -157,9 +157,11 @@ sync_contrib() {
     log "Syncing contrib scripts..."
     mkdir -p "${dst}"
 
-    # Copy test_summary and related scripts
+    # Copy test_summary and result merging scripts
     local scripts=(
         "test_summary"
+        "dg-extract-results.sh"
+        "dg-extract-results.py"
     )
 
     for f in "${scripts[@]}"; do
