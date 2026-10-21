@@ -4,7 +4,8 @@ on:
   merge_group:
     types: [checks_requested]
   push:
-    branches: [main]
+    branches:
+      - main
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -31,6 +32,8 @@ jobs:
         run: make summary
         if: always()
 
+    if: >-
+      github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && github.actor != 'github-merge-queue[bot]') || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci'))
   build-and-test-gcc:
     name: Build GCC and test
     runs-on: ubuntu-latest
@@ -134,6 +137,8 @@ jobs:
             fi
           fi
 
+    if: >-
+      github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && github.actor != 'github-merge-queue[bot]') || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci'))
   sync-check:
     name: Validate sync script
     runs-on: ubuntu-latest
@@ -153,3 +158,8 @@ jobs:
             exit 1
           fi
           echo "Tracked GCC commit: $(cat .gcc-commit)"
+    if: >-
+      github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && github.actor != 'github-merge-queue[bot]') || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci'))
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.ref, github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
