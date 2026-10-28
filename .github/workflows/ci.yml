@@ -11,134 +11,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  test-system-gfortran:
-    name: Test with system gfortran
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gfortran dejagnu tcl expect
-
-      - name: Show gfortran version
-        run: gfortran --version
-
-      - name: Run quick tests
-        run: make test-quick FC=gfortran
-
-      - name: Show results
-        run: make summary
-        if: always()
-
-    if: >-
-      github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && github.actor != 'github-merge-queue[bot]')
-  build-and-test-gcc:
-    name: Build GCC and test
-    runs-on: ubuntu-latest
-    timeout-minutes: 180
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            libgmp-dev \
-            libmpfr-dev \
-            libmpc-dev \
-            flex \
-            bison \
-            dejagnu \
-            tcl \
-            expect
-
-      - name: Read tracked GCC commit
-        id: gcc-commit
-        run: |
-          GCC_COMMIT=$(cat .gcc-commit)
-          echo "commit=$GCC_COMMIT" >> $GITHUB_OUTPUT
-          echo "short_commit=${GCC_COMMIT:0:12}" >> $GITHUB_OUTPUT
-          echo "Will build GCC commit: $GCC_COMMIT"
-
-      - name: Cache GCC build
-        uses: actions/cache@v4
-        with:
-          path: gcc-build
-          key: gcc-build-${{ steps.gcc-commit.outputs.commit }}
-
-      - name: Clone GCC at tracked commit
-        run: |
-          # Shallow clone at specific commit
-          git init .gcc-upstream
-          cd .gcc-upstream
-          git remote add origin git://gcc.gnu.org/git/gcc.git
-          git fetch --depth 1 origin ${{ steps.gcc-commit.outputs.commit }}
-          git checkout FETCH_HEAD
-          echo "Checked out GCC commit: $(git rev-parse HEAD)"
-
-      - name: Configure GCC
-        run: |
-          if [ ! -f gcc-build/Makefile ]; then
-            mkdir -p gcc-build
-            cd gcc-build
-            ../.gcc-upstream/configure \
-              --enable-languages=fortran \
-              --disable-multilib \
-              --disable-bootstrap \
-              --disable-libsanitizer \
-              --disable-libvtv \
-              --disable-libgomp \
-              CFLAGS='-O2 -g0' \
-              CXXFLAGS='-O2 -g0'
-          fi
-
-      - name: Build GCC
-        run: |
-          cd gcc-build
-          make -j$(nproc)
-
-      - name: Show built gfortran version
-        run: |
-          ./gcc-build/gcc/gfortran -v
-          echo ""
-          echo "GCC commit: ${{ steps.gcc-commit.outputs.commit }}"
-
-      - name: Run tests with GCC's native parallelization
-        run: |
-          make test \
-            FC="$(pwd)/gcc-build/gcc/gfortran" \
-            GCC="$(pwd)/gcc-build/gcc/gcc" \
-            JOBS=$(nproc)
-        continue-on-error: true
-
-      - name: Show test summary
-        run: make summary
-        if: always()
-
-      - name: Upload test results
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: test-results-gcc-${{ steps.gcc-commit.outputs.short_commit }}
-          path: |
-            results/gfortran.sum
-            results/gfortran.log
-
-      - name: Check for failures
-        run: |
-          if [ -f results/gfortran.sum ]; then
-            total_fail=$(grep -c "^FAIL:" results/gfortran.sum 2>/dev/null || echo 0)
-            echo "Total failures: $total_fail"
-            if [ $total_fail -gt 0 ]; then
-              echo "::warning::$total_fail test failures detected"
-            fi
-          fi
-
-    if: >-
-      github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && github.actor != 'github-merge-queue[bot]')
+  # The system-gfortran quick tests and the GCC build with the full suite take
+  # 15 to 30 minutes each and run in nightly.yml.
   sync-check:
     name: Validate sync script
     runs-on: [self-hosted, itp-ubuntu24]
@@ -158,6 +32,9 @@ jobs:
             exit 1
           fi
           echo "Tracked GCC commit: $(cat .gcc-commit)"
+
+      - name: Test the nightly triage logic
+        run: python3 scripts/test_nightly_triage.py
     if: >-
       github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && github.actor != 'github-merge-queue[bot]')
 concurrency:
