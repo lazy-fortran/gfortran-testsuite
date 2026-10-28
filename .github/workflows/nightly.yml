@@ -1,0 +1,181 @@
+name: nightly
+
+# Slow jobs run here once a night on main instead of in the merge queue. A
+# failing job bisects its own command between its last green nightly and this
+# commit; the report job files or updates one issue labelled nightly-failure,
+# and the next green run of those jobs closes it.
+run-name: >-
+  ${{ inputs.jobs && format('nightly: jobs {0}', inputs.jobs) || 'nightly: all jobs' }}
+
+on:
+  schedule:
+    - cron: "23 1 * * *"
+  workflow_dispatch:
+    inputs:
+      jobs:
+        description: Comma-separated jobs to run, system-gfortran and/or gcc (empty runs all)
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: [self-hosted, itp-ubuntu24]
+    outputs:
+      jobs: ${{ steps.plan.outputs.jobs }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: plan
+        env:
+          JOBS: ${{ inputs.jobs }}
+        run: python3 scripts/nightly_triage.py plan --jobs "$JOBS"
+
+  system-gfortran:
+    name: Nightly system-gfortran
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.jobs), 'system-gfortran')
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gfortran dejagnu tcl expect
+
+      - name: Run quick tests with system gfortran
+        id: run
+        run: python3 scripts/nightly_triage.py run system-gfortran
+
+      - name: Bisect the failure
+        if: failure() && steps.run.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/nightly_triage.py bisect system-gfortran --out "$RUNNER_TEMP/bisect.json"
+
+      - uses: actions/upload-artifact@v4
+        if: failure() && steps.run.outcome == 'failure'
+        with:
+          name: nightly-bisect-system-gfortran
+          path: ${{ runner.temp }}/bisect.json
+          if-no-files-found: ignore
+
+  gcc:
+    name: Nightly gcc
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.jobs), 'gcc')
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            libgmp-dev \
+            libmpfr-dev \
+            libmpc-dev \
+            flex \
+            bison \
+            dejagnu \
+            tcl \
+            expect
+
+      - name: Read tracked GCC commit
+        id: gcc-commit
+        run: |
+          GCC_COMMIT=$(cat .gcc-commit)
+          echo "commit=$GCC_COMMIT" >> "$GITHUB_OUTPUT"
+          echo "short_commit=${GCC_COMMIT:0:12}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache GCC build
+        uses: actions/cache@v4
+        with:
+          path: gcc-build
+          key: gcc-build-${{ steps.gcc-commit.outputs.commit }}
+
+      - name: Build GCC and run the full test suite
+        id: run
+        run: python3 scripts/nightly_triage.py run gcc
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-gcc-${{ steps.gcc-commit.outputs.short_commit }}
+          path: |
+            results/gfortran.sum
+            results/gfortran.log
+
+      - name: Bisect the failure
+        if: failure() && steps.run.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/nightly_triage.py bisect gcc --out "$RUNNER_TEMP/bisect.json"
+
+      - uses: actions/upload-artifact@v4
+        if: failure() && steps.run.outcome == 'failure'
+        with:
+          name: nightly-bisect-gcc
+          path: ${{ runner.temp }}/bisect.json
+          if-no-files-found: ignore
+
+  report:
+    name: Report the failure
+    needs: [plan, system-gfortran, gcc]
+    if: failure()
+    runs-on: [self-hosted, itp-ubuntu24]
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: nightly-bisect-*
+          path: bisect
+      - name: File or update the nightly-failure issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/nightly_triage.py report --results bisect
+
+  close:
+    name: Close the nightly-failure issue
+    needs: [plan, system-gfortran, gcc]
+    if: >-
+      always() && needs.plan.result == 'success'
+      && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
+    runs-on: [self-hosted, itp-ubuntu24]
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Close the issue once its jobs pass
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOBS: ${{ inputs.jobs }}
+        run: python3 scripts/nightly_triage.py success --jobs "$JOBS"

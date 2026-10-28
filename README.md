@@ -96,12 +96,14 @@ script.
 
 ## CI/CD
 
-This repository includes GitHub Actions CI that:
+The merge queue runs [.github/workflows/ci.yml](.github/workflows/ci.yml), which only validates the sync script and the tracked GCC commit.
 
-1. **Tests with system gfortran** - Quick validation on every push
-2. **Builds GCC and tests** - Builds GCC at the commit recorded in `.gcc-commit` and runs the full test suite (on pushes to `main`, in the merge queue, and on manual dispatch)
+The slow jobs run nightly on `main`, and on manual dispatch, in [.github/workflows/nightly.yml](.github/workflows/nightly.yml):
 
-See [.github/workflows/ci.yml](.github/workflows/ci.yml) for details.
+1. **Tests with system gfortran** - the quick subset (`make test-quick`)
+2. **Builds GCC and tests** - builds GCC at the commit recorded in `.gcc-commit` and runs the full test suite
+
+When a nightly job fails, it bisects its own command from its last green nightly and files or updates an issue labelled `nightly-failure`; the next green nightly closes it.
 
 ## Syncing with GCC Upstream
 
