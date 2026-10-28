@@ -9,7 +9,7 @@ enabling testing of any gfortran-compatible compiler without building GCC.
 
 This repository contains:
 
-- **testsuite/gfortran.dg/** - Main gfortran DejaGnu test suite (~9000+ tests)
+- **testsuite/gfortran.dg/** - Main gfortran DejaGnu test suite (about 8,500 Fortran source files)
 - **testsuite/gfortran.fortran-torture/** - Fortran torture tests
 - **testsuite/gfortran.target/** - Target-specific Fortran tests
 - **testsuite/gcc.target/powerpc/ppc-fortran/** - PowerPC Fortran tests
@@ -99,7 +99,7 @@ script.
 This repository includes GitHub Actions CI that:
 
 1. **Tests with system gfortran** - Quick validation on every push
-2. **Builds GCC and tests** - Weekly builds GCC from tracked commit and runs the full test suite
+2. **Builds GCC and tests** - Builds GCC at the commit recorded in `.gcc-commit` and runs the full test suite (on pushes to `main`, in the merge queue, and on manual dispatch)
 
 See [.github/workflows/ci.yml](.github/workflows/ci.yml) for details.
 
